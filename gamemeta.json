@@ -1,0 +1,12 @@
+{
+    "nombre": "Compilation Failed",
+    "autores": [
+        "Camila Toledo",
+        "José Buenahora",
+        "Angelo Arteaga",
+        "Abelardo Drika"
+    ],
+    "version": "1.0.0",
+    "descripcion": Minijuego de habilidad, para superar desafíos.",
+    "grupo": "Grupo #6"
+}
