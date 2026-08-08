@@ -11,14 +11,10 @@ class AssetManager:
     """Encapsula la carga, el almacenamiento y el acceso a los recursos multimedia usando pathlib."""
 
     def __init__(self):
-        # Determinación de la ruta base mediante pathlib
-        if getattr(sys, "frozen", False):
-            self._base_dir = Path(sys.executable).parent
-        else:
-            self._base_dir = Path(__file__).resolve().parent
-
-        self._sounds_dir = self._base_dir / "sounds"
-        self._images_dir = self._base_dir / "images"
+        # Determinación de la ruta base y directorios de recursos mediante pathlib
+        self._base_dir = self._find_base_dir()
+        self._sounds_dir = self._find_asset_dir("sounds")
+        self._images_dir = self._find_asset_dir("images")
 
         self._sounds = {}
         self._images = {}
@@ -31,6 +27,32 @@ class AssetManager:
         self._init_expressions()
         self._init_fonts()
 
+    def _find_base_dir(self) -> Path:
+        """Determina el directorio raíz donde se encuentran los archivos del script o el ejecutable."""
+        if getattr(sys, "frozen", False):
+            # Si el proyecto se empaquetó con PyInstaller
+            meipass = getattr(sys, "_MEIPASS", None)
+            if meipass:
+                return Path(meipass)
+            return Path(sys.executable).resolve().parent
+        # Ejecución normal directa o como módulo importado
+        return Path(__file__).resolve().parent
+
+    def _find_asset_dir(self, folder_name: str) -> Path:
+        """Busca una carpeta de assets (e.g. 'images', 'sounds') usando pathlib y múltiples rutas de fallback."""
+        candidates = [
+            self._base_dir / folder_name,
+            Path(__file__).resolve().parent / folder_name,
+            Path.cwd() / folder_name,
+            Path.cwd() / "minijuego abs" / folder_name,
+            Path.cwd() / "abs_6" / "minijuego abs" / folder_name,
+            Path(__file__).resolve().parent.parent / folder_name,
+        ]
+        for candidate in candidates:
+            if candidate.exists() and candidate.is_dir():
+                return candidate
+        return self._base_dir / folder_name
+
     def _init_sounds(self):
         sounds_map = {
             "btn": "iniciarjuego.mp3",
@@ -42,8 +64,8 @@ class AssetManager:
         for key, filename in sounds_map.items():
             sound_path = self._sounds_dir / filename
             try:
-                # Pygame 2.0+ acepta objetos Path directamente
-                self._sounds[key] = pygame.mixer.Sound(sound_path)
+                # Se utiliza str(sound_path) para compatibilidad total con pygame/OS
+                self._sounds[key] = pygame.mixer.Sound(str(sound_path))
             except Exception as e:
                 print(f"Error cargando sonido '{key}' desde {sound_path}: {e}")
                 self._sounds[key] = None
@@ -62,9 +84,10 @@ class AssetManager:
         for key, filename in images_map.items():
             image_path = self._images_dir / filename
             try:
-                self._images[key] = pygame.image.load(
-                    image_path
-                ).convert_alpha()
+                img = pygame.image.load(str(image_path))
+                if pygame.display.get_surface() is not None:
+                    img = img.convert_alpha()
+                self._images[key] = img
             except Exception as e:
                 print(f"Error cargando imagen '{key}' desde {image_path}: {e}")
                 self._images[key] = None
@@ -118,24 +141,33 @@ class AssetManager:
                 path = self._images_dir / filename
 
                 if path.is_file():
-                    img = pygame.image.load(path).convert_alpha()
-                    bbox = img.get_bounding_rect()
-                    sub_img = (
-                        img.subsurface(bbox) if bbox.height > 0 else img
-                    )
-                    target_height = 185
-                    orig_rect = sub_img.get_rect()
-                    scale_factor = target_height / orig_rect.height
-                    new_width = int(orig_rect.width * scale_factor)
-                    img_scaled = pygame.transform.smoothscale(
-                        sub_img, (new_width, target_height)
-                    )
+                    try:
+                        img = pygame.image.load(str(path))
+                        if pygame.display.get_surface() is not None:
+                            img = img.convert_alpha()
+                        bbox = img.get_bounding_rect()
+                        sub_img = (
+                            img.subsurface(bbox) if bbox.height > 0 else img
+                        )
+                        target_height = 185
+                        orig_rect = sub_img.get_rect()
+                        scale_factor = target_height / max(1, orig_rect.height)
+                        new_width = int(orig_rect.width * scale_factor)
+                        img_scaled = pygame.transform.smoothscale(
+                            sub_img, (new_width, target_height)
+                        )
 
-                    canvas = pygame.Surface((200, 200), pygame.SRCALPHA)
-                    draw_x = (200 - new_width) // 2
-                    draw_y = 200 - target_height
-                    canvas.blit(img_scaled, (draw_x, draw_y))
-                    self._characters_expressions[char_id][exp_name] = canvas
+                        canvas = pygame.Surface((200, 200), pygame.SRCALPHA)
+                        draw_x = (200 - new_width) // 2
+                        draw_y = 200 - target_height
+                        canvas.blit(img_scaled, (draw_x, draw_y))
+                        self._characters_expressions[char_id][exp_name] = canvas
+                    except Exception as e:
+                        print(f"Error procesando expresion '{exp_name}' para personaje {char_id} en {path}: {e}")
+                        fallback = self._characters_expressions[char_id].get(
+                            "neutral", pygame.Surface((200, 200), pygame.SRCALPHA)
+                        )
+                        self._characters_expressions[char_id][exp_name] = fallback
                 else:
                     if "neutral" in self._characters_expressions[char_id]:
                         self._characters_expressions[char_id][exp_name] = (
